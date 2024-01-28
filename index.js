@@ -2,8 +2,8 @@ const express = require("express");
 const cors = require("cors");
 require("./db/config");
 const jwt = require("jsonwebtoken");
-const Student = require("./db/students");
-const Courses = require("./db/courses");
+const Student = require("./models/students");
+const Courses = require("./models/courses");
 const bcrypt = require("bcrypt");
 
 const app = express();
@@ -83,7 +83,15 @@ app.post("/register", async (req, res) => {
 // Add categories api
 app.post("/api/categories", async (req, res) => {
   try {
-    const courses = new Courses(req.body);
+    const { categoryName, description } = req.body;
+
+    const existingCategory = await Courses.findOne({ categoryName });
+
+    if (existingCategory) {
+      return res.status(400).json({ error: "Category already exists" });
+    }
+
+    const courses = new Courses({ categoryName, description });
     await courses.save();
     res.status(201).json(courses);
   } catch (error) {
@@ -91,14 +99,16 @@ app.post("/api/categories", async (req, res) => {
   }
 });
 // Add courses api
-app.post("/api/categories/:categoryId/subjects", async (req, res) => {
+app.post("/api/add-course/:categoryId", async (req, res) => {
   try {
-    const { subjectId, name } = req.body;
+    const { courseName, description, instructor, price } = req.body;
     const categoryId = req.params.categoryId;
 
     const updatedCategory = await Courses.findByIdAndUpdate(
       categoryId,
-      { $push: { subjects: { subjectId, name } } },
+      {
+        $push: { subjects: { courseName, description, instructor, price } },
+      },
       { new: true }
     );
 
@@ -107,25 +117,50 @@ app.post("/api/categories/:categoryId/subjects", async (req, res) => {
     res.status(500).json({ error: error.message });
   }
 });
-// Get categories api
-app.get("/api/categories", async (req, res) => {
+
+// save a lecture by category and course id
+app.post("/api/add-lecture/:categoryId/:courseId", async (req, res) => {
   try {
-    const categories = await Courses.find();
-    res.status(200).json(categories);
+    const { categoryId, courseId } = req.params;
+    const { lectureData } = req.body;
+
+    // Find the category by ID
+    const category = await Courses.findById(categoryId);
+
+    if (!category) {
+      return res.status(404).json({ error: "Category not found." });
+    }
+
+    // Find the course within the category by ID
+    const course = category.subjects.find((c) => c._id.toString() === courseId);
+
+    if (!course) {
+      return res.status(404).json({ error: "Course not found." });
+    }
+
+    // Add the new lecture to the course's lectures array
+    const updatedCategory = await Courses.findOneAndUpdate(
+      { _id: categoryId, "subjects._id": courseId },
+      { $push: { "subjects.$.lectures": lectureData } },
+      { new: true }
+    );
+
+    res.status(200).json(updatedCategory);
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    console.error(error);
+    res.status(500).json({ error: "Internal Server Error" });
   }
 });
 
 // Update a subject within a category
 app.put("/api/categories/:categoryId/subjects/:subjectId", async (req, res) => {
   try {
-    const { name } = req.body;
+    const { courseName } = req.body;
     const { categoryId, subjectId } = req.params;
 
     const updatedCategory = await Courses.findOneAndUpdate(
-      { _id: categoryId, "subjects.subjectId": subjectId },
-      { $set: { "subjects.$.name": name } },
+      { _id: categoryId, "subjects._id": subjectId },
+      { $set: { "subjects.$.courseName": courseName } },
       { new: true }
     );
 
@@ -156,6 +191,77 @@ app.put("/api/categories/:categoryId", async (req, res) => {
     }
 
     res.status(200).json(updatedCategory);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// delete a course by id
+app.delete("/api/delete-course/:categoryId/:courseId", async (req, res) => {
+  try {
+    const { categoryId, courseId } = req.params;
+    // Find the category by ID
+    const category = await Courses.findById(categoryId);
+    if (!category) {
+      return res.status(404).json({ error: "Category not found." });
+    }
+    // Find the course within the category by ID
+    const course = category.subjects.find((c) => c._id == courseId);
+    if (!course) {
+      return res.status(404).json({ error: "Course not found." });
+    }
+    // Remove the course from the course's lectures array
+    course.deleteOne();
+
+    await category.save();
+
+    res.status(200).json(category);
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: "Internal Server Error" });
+  }
+});
+
+// delete a lecture by id
+app.delete(
+  "/api/delete-lecture/:categoryId/:courseId/:lectureId",
+  async (req, res) => {
+    try {
+      const { categoryId, courseId, lectureId } = req.params;
+      // Find the category by ID
+      const category = await Courses.findById(categoryId);
+      if (!category) {
+        return res.status(404).json({ error: "Category not found." });
+      }
+      // Find the course within the category by ID
+      const course = category.subjects.find((c) => c._id == courseId);
+      if (!course) {
+        return res.status(404).json({ error: "Course not found." });
+      }
+      // Find the lecture within the course by ID
+      const lecture = course.lectures.find((c) => c._id == lectureId);
+
+      if (!lecture) {
+        return res.status(404).json({ error: "Lecture not found." });
+      }
+      // Remove the lecture from the course's lectures array
+      lecture.deleteOne();
+
+      await category.save();
+
+      res.status(200).json(category);
+    } catch (error) {
+      console.error(error);
+      res.status(500).json({ error: "Internal Server Error" });
+    }
+  }
+);
+
+// Get categories api
+app.get("/api/categories", async (req, res) => {
+  try {
+    const categories = await Courses.find();
+    res.status(200).json(categories);
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
