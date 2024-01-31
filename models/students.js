@@ -14,6 +14,10 @@ const studentSchema = new mongoose.Schema({
   dateOfBirth: { type: String, required: true },
   categoryName: { type: String, required: true },
   password: { type: String, required: true },
+  wishlist: [{ type: mongoose.Schema.Types.ObjectId }],
+  cart: [{ type: mongoose.Schema.Types.ObjectId }],
+  isPublished: { type: Boolean, default: false },
+  isDeleted: { type: Boolean, default: false },
 });
 
 module.exports = mongoose.model("students", studentSchema);
