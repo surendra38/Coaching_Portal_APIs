@@ -296,13 +296,13 @@ app.get('/api/wishlist/:studentId', async (req, res) => {
   try {
     const studentId = req.params.studentId;
 
-    const wishlist = await Courses.find();
+    const wishlist = await Courses.findOne({ _id: studentId }).populate('courses');
 
     if (!wishlist) {
       return res.status(404).json({ error: 'Wishlist not found for the user' });
     }
 
-    res.json(wishlist);
+    res.json(wishlist.products);
   } catch (error) {
     console.error(error);
     res.status(500).json({ error: 'Internal Server Error' });
@@ -319,7 +319,7 @@ app.post(
       const courseId = req.params.courseId;
       const categoryId = req.params.categoryId;
 
-      const updatedWishList = await Student.findOneAndUpdate(
+      const updatedWishList = await Courses.findOneAndUpdate(
         { _id: categoryId, "courses._id": courseId },
         { $addToSet: { "courses.$.wishlist": studentId } },
         { new: true }
